@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Transformer.Messages;
+﻿using Transformer.Messages;
 
 namespace Transformer.Transformers
 {
@@ -11,8 +6,8 @@ namespace Transformer.Transformers
     {
     }
 
-    public interface IMessageTransformer<T> : IMessageTransformer where T : class
+    public interface IMessageTransformer<TTargetType> : IMessageTransformer where TTargetType : class
     {
-        T Transform(IIncomingMessage message);
+        TTargetType Transform(IIncomingMessage message);
     }
 }

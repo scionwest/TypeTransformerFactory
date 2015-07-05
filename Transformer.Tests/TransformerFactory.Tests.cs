@@ -37,20 +37,20 @@ namespace Transformer.Tests
             });
         }
 
-    [TestMethod]
-    public void Factory_resolves_AMessageTransformer_for_Foo_device_type()
-    {
-        // Arrange
-        var factory = new MessageTransformFactory();
-        IMessageTransformer<AMessage> transformer = 
-            factory.CreateTransformer<AMessage>(DeviceTypeEnum.Foo);
+        [TestMethod]
+        public void Factory_resolves_AMessageTransformer_for_Foo_device_type()
+        {
+            // Arrange
+            var factory = new MessageTransformFactory();
+            IMessageTransformer<AMessage> transformer =
+                factory.CreateTransformer<AMessage>(DeviceTypeEnum.Foo);
 
-        // Act
-        AMessage messageResult = transformer.Transform(new IncomingFooMessage());
+            // Act
+            AMessage messageResult = transformer.Transform(new IncomingFooMessage());
 
-        // Assert
-        Assert.IsNotNull(messageResult, "Transformer failed to convert the IncomingMessage");
-    }
+            // Assert
+            Assert.IsNotNull(messageResult, "Transformer failed to convert the IncomingMessage");
+        }
 
         [TestMethod]
         public void Factory_resolves_BMessageTransformer_for_Bar_device_type()
