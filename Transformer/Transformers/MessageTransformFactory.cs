@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using Transformer.Messages;
 
 namespace Transformer.Transformers
@@ -12,23 +10,27 @@ namespace Transformer.Transformers
     {
         /// <summary>
         /// The assemblies to cache. Defaults to including the assembly this factory exists in.
+        /// if there are additional assemblies that hold transformers, they can be added via the 
+        /// MessageTransformFactory.ScanAssembly(Assembly) method.
         /// </summary>
         private static List<Assembly> assembliesToCache
             = new List<Assembly> { typeof(MessageTransformFactory).GetTypeInfo().Assembly };
 
         /// <summary>
-        /// The factory method optionally used to instance the transformer
+        /// The factory method used to instance a transformer
         /// </summary>
         private static Func<Type, IMessageTransformer> factoryMethod;
 
         /// <summary>
-        /// The device type cache
+        /// The DeviceType to Transformer mapping cache
         /// </summary>
-        private static Dictionary<DeviceTypeEnum, Type> deviceCache
+        private static Dictionary<DeviceTypeEnum, Type> deviceTransformerMapCache
             = new Dictionary<DeviceTypeEnum, Type>();
 
         /// <summary>
         /// Initializes the <see cref="CommandFormatterFactory"/> class.
+        /// This will build the initial device to transformer mapping when the
+        /// Factory is first used.
         /// </summary>
         static MessageTransformFactory()
         {
@@ -36,35 +38,23 @@ namespace Transformer.Transformers
         }
 
         /// <summary>
-        /// Sets the formatter factory used to instance formatters.
+        /// Sets the transformer factory used to instance transformers.
         /// </summary>
-        /// <param name="factory">The factory.</param>
-        public static void SetFormatterFactory(Func<Type, IMessageTransformer> factory)
+        /// <param name="factory">The factory delegate used to instance new IMessageTransformer objects.</param>
+        public static void SetTransformerFactory(Func<Type, IMessageTransformer> factory)
         {
-            //if (availableMessages.Any(type => type != typeof(IMessageTransformer<>)))
-            //{
-            //    throw new InvalidOperationException("The Factory was provided with a collection of Types containing non-IMessageTransformer<T> implementations");
-            //}
-            //else if (availableMessages.Any(type => type.GetTypeInfo().GetCustomAttribute<TransformableAttribute>() == null))
-            //{
-            //    throw new InvalidOperationException("At least one of the Types provided to the Factory for transforming did not include a TransformableAttribute.");
-            //}
-
-            //// Create a dictionary of cached transformers for each of the available device types.
-            //MessageTransformFactory.deviceCache = availableMessages.ToDictionary(type =>
-            //{
-            //    var attributeOnType = type.GetTypeInfo().GetCustomAttribute<TransformableAttribute>();
-            //    return attributeOnType.DeviceType;
-            //}
-            //, type => type);
+            if (factory == null)
+            {
+                throw new ArgumentNullException("factory", "Factory delegate can not be null.");
+            }
 
             MessageTransformFactory.factoryMethod = factory;
         }
 
         /// <summary>
-        /// Scans a given assembly for formatters.
+        /// Scans a given assembly for IMessageTransformer implementations.
         /// </summary>
-        /// <param name="assemblyName">Name of the assembly.</param>
+        /// <param name="assemblyName">Name of the assembly to scan.</param>
         public static void ScanAssembly(AssemblyName assemblyName)
         {
             if (assemblyName == null)
@@ -74,29 +64,30 @@ namespace Transformer.Transformers
 
             Assembly assembly = Assembly.Load(assemblyName);
 
+            // If we had previously scanned the assembly, we return. No need to scan twice.
             if (assembliesToCache.Any(a => a.FullName == assemblyName.FullName))
             {
                 return;
             }
 
             assembliesToCache.Add(assembly);
-            CacheAssemblyFormatters(assembly);
+
+            // Create a mapping from DeviceType to Transformers for this assembly.
+            MapDeviceTypesFromAssembly(assembly);
         }
 
         /// <summary>
         /// Gets the available transformer types that have been registered to this factory.
         /// </summary>
-        /// <returns></returns>
         public static Type[] GetAvailableTransformerTypes()
         {
-            return deviceCache.Values.ToArray();
+            return deviceTransformerMapCache.Values.ToArray();
         }
 
         /// <summary>
-        /// Gets an ICommandFormatter implementation for the command code given.
+        /// Gets an IMessageTransformer implementation for the Device Type given.
         /// </summary>
-        /// <param name="command">The command.</param>
-        /// <returns>Returns an ICommandFormatter concrete type</returns>
+        /// <param name="deviceType">The DeviceType that the factory must create an IMessageTransformer for.</param>
         public IMessageTransformer<T> CreateTransformer<T>(DeviceTypeEnum deviceType) where T : class
         {
             // If we have a factory method, then we use it.
@@ -106,34 +97,42 @@ namespace Transformer.Transformers
             }
 
             // Cast the non-generic return value to the generic version for the caller.
-            Type transformerType = MessageTransformFactory.deviceCache[deviceType];
+            Type transformerType = MessageTransformFactory.deviceTransformerMapCache[deviceType];
+
+            // Since our factory delegate method returns the non-generic implementation, we must
+            // case it to the required generic version of it when we return the result.
             return factoryMethod(transformerType) as IMessageTransformer<T>;
         }
 
         /// <summary>
-        /// Builds the cache of ICommandResponse instances.
+        /// Builds the cache of IMessageTransformer Types that can be used by this factory.
         /// </summary>
         private static void BuildCache()
         {
-            foreach (Assembly assembly in assembliesToCache)
+            foreach (var assembly in assembliesToCache)
             {
-                CacheAssemblyFormatters(assembly);
+                MapDeviceTypesFromAssembly(assembly);
             }
         }
 
-        private static void CacheAssemblyFormatters(Assembly assembly)
+        /// <summary>
+        /// Creates a DeviceType to IMessageTransformer Type mapping.
+        /// </summary>
+        /// <param name="assembly"></param>
+        private static void MapDeviceTypesFromAssembly(Assembly assembly)
         {
+            // Find all of the Types that implement the IMessageTransformer interface
             var transformableTypes = assembly.DefinedTypes
                 .Where(type => type
                 .ImplementedInterfaces
-                .Any(inter => inter == typeof(TransformableAttribute)) && !type.IsAbstract);
+                .Any(inter => inter == typeof(IMessageTransformer)) && !type.IsAbstract);
 
             foreach (TypeInfo transformer in transformableTypes)
             {
+                // Fetch the Transformable attribute from the type and create a mapping
+                // storing the device type that this IMessageTransformer targets.
                 var commandCode = transformer.GetCustomAttribute<TransformableAttribute>();
-
-                // Create a new instance of the response
-                deviceCache.Add(commandCode.DeviceType, transformer.AsType());
+                deviceTransformerMapCache.Add(commandCode.DeviceType, transformer.AsType());
             }
         }
     }
